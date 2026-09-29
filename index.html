@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Sperrt jede Netzwerkverbindung: die App kann nichts senden oder nachladen. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; manifest-src 'self'; worker-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="theme-color" content="#2456d6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Wörter">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Wörterzähler</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --fg:#1c1f24; --muted:#6a7280; --line:#dde1e7; --acc:#2456d6; --ok:#187a3c; --warn:#b3261e; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14161a; --card:#1e2127; --fg:#eceff3; --muted:#9aa3b0; --line:#2f343c; --acc:#7da2ff; --ok:#5fd08a; --warn:#ff8a80; }
+  }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; padding-inline:16px }
+  main { max-width:900px; margin:0 auto; padding-block:24px }
+  h1 { font-size:1.4rem; margin:0 0 4px }
+  .sub { color:var(--muted); margin:0 0 16px; font-size:.9rem }
+  textarea { width:100%; min-height:45vh; resize:vertical; padding:14px; border:1px solid var(--line); border-radius:10px;
+    background:var(--card); color:var(--fg); font:inherit; line-height:1.6 }
+  textarea:focus { outline:2px solid var(--acc); outline-offset:1px }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin:14px 0 }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 14px }
+  .stat b { display:block; font-size:1.6rem; font-variant-numeric:tabular-nums }
+  .stat span { color:var(--muted); font-size:.8rem }
+  .stat.main b { color:var(--acc) }
+  .row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:10px }
+  label { font-size:.9rem; color:var(--muted) }
+  input[type=number] { width:90px; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); font:inherit }
+  button { padding:8px 14px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); font:inherit; cursor:pointer }
+  button:hover { border-color:var(--acc) }
+  #goal { font-weight:600 }
+  .ok { color:var(--ok) } .warn { color:var(--warn) }
+  .priv { margin-top:20px; padding:12px 14px; border:1px dashed var(--line); border-radius:10px; color:var(--muted); font-size:.85rem }
+  .priv b { color:var(--fg) }
+  .tabs { display:flex; gap:6px; margin-bottom:14px }
+  .tab { padding:8px 16px; border-radius:8px 8px 0 0 }
+  .tab[aria-selected=true] { background:var(--acc); color:#fff; border-color:var(--acc) }
+  @media (prefers-color-scheme: dark) { .tab[aria-selected=true] { color:#111 } }
+  .panel[hidden] { display:none }
+  .ctl { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px 18px; margin:10px 0 }
+  .ctl label { display:flex; flex-direction:column; gap:2px }
+  .ctl input[type=range], .ctl select { width:100% }
+  .ctl select { padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); font:inherit }
+  .pages { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 }
+  .pages button[aria-current=true] { border-color:var(--acc); outline:2px solid var(--acc) }
+  .canvaswrap { border:1px solid var(--line); border-radius:10px; background:var(--card); overflow:auto; max-height:75vh }
+  #cv { display:block; width:100%; height:auto; cursor:crosshair }
+  .hint { color:var(--muted); font-size:.85rem; margin:6px 0 }
+  .empty { padding:30px; text-align:center; color:var(--muted) }
+  .stat b.big { font-size:2rem }
+</style>
+</head>
+<body>
+<main>
+  <h1 style="display:flex;align-items:center;gap:10px"><img src="icons/icon-192.png" alt="" width="36" height="36" style="border-radius:9px">Wörterzähler</h1>
+  <p class="sub">Text eintippen oder handgeschriebene Seiten einscannen – alles bleibt auf diesem Gerät.</p>
+  <div class="tabs" role="tablist"><button class="tab" id="tab-text" role="tab" aria-selected="true">Text eintippen</button><button class="tab" id="tab-scan" role="tab" aria-selected="false">Seiten einscannen</button></div>
+  <div class="panel" id="p-text">
+
+  <textarea id="t" placeholder="Hier schreiben …" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" aria-label="Text"></textarea>
+
+  <div class="stats">
+    <div class="stat main"><b id="w">0</b><span>Wörter</span></div>
+    <div class="stat"><b id="c">0</b><span>Zeichen (mit Leerzeichen, ohne Satzzeichen/Zahlen)</span></div>
+    <div class="stat"><b id="cn">0</b><span>Buchstaben</span></div>
+    <div class="stat"><b id="s">0</b><span>Sätze</span></div>
+    <div class="stat"><b id="p">0</b><span>Absätze</span></div>
+  </div>
+
+  <div class="row">
+    <label>Vorgabe von <input type="number" id="min" min="0" placeholder="min"></label>
+    <label>bis <input type="number" id="max" min="0" placeholder="max"> Wörter</label>
+    <span id="goal"></span>
+    <span style="flex:1"></span>
+    <button id="clear" type="button">Alles löschen</button>
+  </div>
+
+  </div>
+  <div class="panel" id="p-scan" hidden>
+    <div class="row">
+      <button id="add" type="button">Seiten hinzufügen (Foto/Scan)</button>
+      <input type="file" id="file" accept="image/*" multiple hidden>
+      <span class="hint" style="margin:0">Bilder (JPG/PNG/…). PDFs bitte vorher als Bild speichern.</span>
+    </div>
+    <div class="ctl">
+      <label>Tinte
+        <select id="ink">
+          <option value="all">Alle Farben (außer Papier)</option>
+          <option value="blue">Nur blaue Tinte</option>
+          <option value="dark">Nur schwarze/dunkle Tinte</option>
+        </select></label>
+      <label>Empfindlichkeit <input type="range" id="sens" min="5" max="40" value="16"></label>
+      <label>Wortabstand <input type="range" id="gap" min="10" max="120" value="25"></label>
+      <label><span><input type="checkbox" id="lines" checked> Linien/Karos/Rand entfernen</span>
+             <span><input type="checkbox" id="showink"> erkannte Tinte einfärben</span></label>
+    </div>
+    <div class="stats">
+      <div class="stat main"><b class="big" id="stotal">0</b><span>Wörter gesamt (Schätzung)</span></div>
+      <div class="stat"><b id="spage">0</b><span>auf dieser Seite</span></div>
+      <div class="stat"><b id="spages">0</b><span>Seiten</span></div>
+    </div>
+    <div class="pages" id="pages"></div>
+    <div class="canvaswrap"><canvas id="cv" width="10" height="10"></canvas><div class="empty" id="empty">Noch keine Seite geladen.</div></div>
+    <p class="hint"><b style="color:#e8590c">Orange Rahmen</b> = gezählte Wörter. Klick auf einen Rahmen: nicht mitzählen (z. B. Zahl, Durchgestrichenes, Aufgabennummer). Klick auf eine freie Stelle: Wort von Hand hinzufügen. Klick auf ein blaues „+“: wieder entfernen.</p>
+    <div class="row"><button id="rmpage" type="button">Diese Seite entfernen</button><button id="clearscan" type="button">Alle Seiten löschen</button></div>
+  </div>
+
+  <div class="priv">
+    <b>Datenschutz &amp; Klausurtauglichkeit:</b> Die App läuft komplett offline in diesem Browserfenster.
+    Es wird nichts gespeichert, übertragen oder nachgeladen (Netzwerkzugriffe sind technisch gesperrt),
+    es gibt keine KI, keine Rechtschreibhilfe, keine Autokorrektur, keine Konten und kein Tracking.
+    Fotos und Scans werden nur im Browser ausgewertet, nicht hochgeladen. Beim Schließen oder Neuladen sind Text und Bilder weg. Ob ein Hilfsmittel in einer Prüfung erlaubt ist,
+    entscheidet die Lehrkraft – frag vorher kurz nach.
+  </div>
+</main>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var t = $('t');
+
+  function count() {
+    var v = t.value;
+    // Wort = durch Leerraum getrennte Einheit mit mind. einem Buchstaben.
+    // Reine Zahlen ("2024", "3,5") und einzelne Satzzeichen ("-", "–", "...") zählen nicht.
+    // Bindestrich-Wörter (z. B. "E-Mail") und Wörter mit Apostroph zählen als ein Wort.
+    var words = (v.match(/\S+/g) || []).filter(function (x) { return /\p{L}/u.test(x); }).length;
+    var letters = (v.match(/\p{L}/gu) || []).length;
+    var lettersSp = (v.match(/[\p{L}\s]/gu) || []).length;
+    var sentences = (v.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || []).filter(function (x) { return /[\p{L}\p{N}]/u.test(x); }).length;
+    var paras = v.split(/\n\s*\n|\n/).filter(function (x) { return x.trim(); }).length;
+
+    $('w').textContent = words;
+    $('c').textContent = lettersSp;
+    $('cn').textContent = letters;
+    $('s').textContent = sentences;
+    $('p').textContent = paras;
+
+    var min = parseInt($('min').value, 10), max = parseInt($('max').value, 10), g = $('goal');
+    g.className = ''; g.textContent = '';
+    if (!isNaN(min) && words < min) { g.textContent = 'noch ' + (min - words) + ' Wörter bis zur Mindestzahl'; g.className = 'warn'; }
+    else if (!isNaN(max) && words > max) { g.textContent = (words - max) + ' Wörter zu viel'; g.className = 'warn'; }
+    else if (!isNaN(min) || !isNaN(max)) { g.textContent = '✓ im Rahmen'; g.className = 'ok'; }
+  }
+
+  t.addEventListener('input', count);
+  $('min').addEventListener('input', count);
+  $('max').addEventListener('input', count);
+  $('clear').addEventListener('click', function () {
+    if ($('clear').dataset.sure) { t.value = ''; delete $('clear').dataset.sure; $('clear').textContent = 'Alles löschen'; count(); t.focus(); }
+    else { $('clear').dataset.sure = '1'; $('clear').textContent = 'Wirklich löschen?';
+      setTimeout(function () { delete $('clear').dataset.sure; $('clear').textContent = 'Alles löschen'; }, 3000); }
+  });
+  count();
+})();
+</script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var MAXSIDE = 2000;
+  var pages = [], cur = -1, timer = null, busy = false;
+
+  // ---- Tabs ----
+  function tab(which) {
+    $('p-text').hidden = which !== 'text'; $('p-scan').hidden = which !== 'scan';
+    $('tab-text').setAttribute('aria-selected', which === 'text'); $('tab-scan').setAttribute('aria-selected', which === 'scan');
+    if (which === 'scan') draw();
+  }
+  $('tab-text').onclick = function () { tab('text'); };
+  $('tab-scan').onclick = function () { tab('scan'); };
+
+  // ---- Laden ----
+  $('add').onclick = function () { $('file').click(); };
+  $('file').onchange = async function () {
+    var files = Array.prototype.slice.call(this.files); this.value = '';
+    for (var i = 0; i < files.length; i++) {
+      try {
+        var bmp = await createImageBitmap(files[i], { imageOrientation: 'from-image' });
+        var s = Math.min(1, MAXSIDE / Math.max(bmp.width, bmp.height));
+        var c = document.createElement('canvas'); c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+        var x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(bmp, 0, 0, c.width, c.height);
+        if (bmp.close) bmp.close();
+        pages.push({ canvas: c, data: x.getImageData(0, 0, c.width, c.height), words: [], excl: {}, manual: [], overlay: null });
+      } catch (e) { alert('Datei konnte nicht gelesen werden: ' + files[i].name); }
+    }
+    if (cur < 0 && pages.length) cur = 0;
+    if (files.length) cur = pages.length - 1;
+    await processAll();
+  };
+
+  // ---- Bildverarbeitung ----
+  function analyse(p) {
+    var W = p.data.width, H = p.data.height, d = p.data.data, N = W * H;
+    var sens = $('sens').value / 100, mode = $('ink').value, rmLines = $('lines').checked;
+    var gray = new Float32Array(N), i, x, y;
+    for (i = 0; i < N; i++) gray[i] = 0.299 * d[4 * i] + 0.587 * d[4 * i + 1] + 0.114 * d[4 * i + 2];
+
+    // lokaler Papierhelligkeitswert über Integralbild (Fenster ~ 41 px)
+    var iw = W + 1, integ = new Float64Array(iw * (H + 1));
+    for (y = 0; y < H; y++) { var row = 0; for (x = 0; x < W; x++) { row += gray[y * W + x]; integ[(y + 1) * iw + x + 1] = integ[y * iw + x + 1] + row; } }
+    var R = 20, mask = new Uint8Array(N);
+    for (y = 0; y < H; y++) {
+      var y0 = Math.max(0, y - R), y1 = Math.min(H, y + R + 1);
+      for (x = 0; x < W; x++) {
+        var x0 = Math.max(0, x - R), x1 = Math.min(W, x + R + 1);
+        var mean = (integ[y1 * iw + x1] - integ[y0 * iw + x1] - integ[y1 * iw + x0] + integ[y0 * iw + x0]) / ((x1 - x0) * (y1 - y0));
+        var g = gray[y * W + x];
+        if (g < mean * (1 - sens) && g < 175) {
+          var r = d[4 * (y * W + x)], gg = d[4 * (y * W + x) + 1], b = d[4 * (y * W + x) + 2];
+          var sat = Math.max(r, gg, b) - Math.min(r, gg, b);
+          if (mode === 'blue' && !(b - r > 25 && b >= gg - 5)) continue;
+          if (mode === 'dark' && !(sat < 50 && g < 150)) continue;
+          mask[y * W + x] = 1;
+        }
+      }
+    }
+
+    // lange waagerechte / senkrechte Linien löschen
+    if (rmLines) {
+      var Lh = Math.max(50, Math.round(0.035 * W)), Lv = Math.max(50, Math.round(0.035 * H)), s, e;
+      for (y = 0; y < H; y++) { x = 0; while (x < W) { if (mask[y * W + x]) { s = x; while (x < W && mask[y * W + x]) x++; if (x - s >= Lh) for (e = s; e < x; e++) mask[y * W + e] = 0; } else x++; } }
+      for (x = 0; x < W; x++) { y = 0; while (y < H) { if (mask[y * W + x]) { s = y; while (y < H && mask[y * W + x]) y++; if (y - s >= Lv) for (e = s; e < y; e++) mask[e * W + x] = 0; } else y++; } }
+    }
+
+    // zusammenhängende Striche (8er-Nachbarschaft)
+    var lab = new Int32Array(N), comps = [], stack = new Int32Array(N), sp;
+    for (i = 0; i < N; i++) {
+      if (!mask[i] || lab[i]) continue;
+      var id = comps.length + 1, cx0 = W, cy0 = H, cx1 = 0, cy1 = 0, area = 0;
+      sp = 0; stack[sp++] = i; lab[i] = id;
+      while (sp) {
+        var q = stack[--sp], qy = (q / W) | 0, qx = q - qy * W; area++;
+        if (qx < cx0) cx0 = qx; if (qx > cx1) cx1 = qx; if (qy < cy0) cy0 = qy; if (qy > cy1) cy1 = qy;
+        for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+          var nx = qx + dx, ny = qy + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+          var n = ny * W + nx; if (mask[n] && !lab[n]) { lab[n] = id; stack[sp++] = n; }
+        }
+      }
+      comps.push({ x0: cx0, y0: cy0, x1: cx1 + 1, y1: cy1 + 1, area: area });
+    }
+    // Rahmen, Schräglinien und Rauschen aussortieren
+    var keep = [];
+    comps.forEach(function (c) {
+      var w = c.x1 - c.x0, h = c.y1 - c.y0;
+      if (c.area < 6) return;
+      if ((w > 0.5 * W || h > 0.5 * H) && c.area / (w * h) < 0.12) { c.drop = true; return; }
+      keep.push(c);
+    });
+    // Ink-Overlay
+    var ov = document.createElement('canvas'); ov.width = W; ov.height = H;
+    var ox = ov.getContext('2d'), od = ox.createImageData(W, H), dropped = {};
+    comps.forEach(function (c, k) { if (c.drop) dropped[k + 1] = 1; });
+    for (i = 0; i < N; i++) if (mask[i] && !dropped[lab[i]]) { od.data[4 * i] = 214; od.data[4 * i + 1] = 0; od.data[4 * i + 2] = 200; od.data[4 * i + 3] = 220; }
+    ox.putImageData(od, 0, 0); p.overlay = ov;
+
+    p.words = group(keep);
+    p.excl = {};
+  }
+
+  function group(cs) {
+    if (!cs.length) return [];
+    var hs = cs.map(function (c) { return c.y1 - c.y0; }).filter(function (h) { return h >= 6; }).sort(function (a, b) { return a - b; });
+    var mh = hs.length ? hs[Math.floor(hs.length / 2)] : 20;
+    var gap = mh * ($('gap').value / 100);
+    var small = [], main = [];
+    cs.forEach(function (c) { var w = c.x1 - c.x0, h = c.y1 - c.y0; (h < 0.3 * mh && w < 0.3 * mh ? small : main).push(c); });
+    main.sort(function (a, b) { return a.x0 - b.x0; });
+    var par = main.map(function (_, i) { return i; });
+    var find = function (a) { while (par[a] !== a) { par[a] = par[par[a]]; a = par[a]; } return a; };
+    for (var i = 0; i < main.length; i++) {
+      var a = main[i];
+      for (var j = i + 1; j < main.length; j++) {
+        var b = main[j]; if (b.x0 > a.x1 + gap) break;
+        var ov = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+        if (ov >= 0.3 * Math.min(a.y1 - a.y0, b.y1 - b.y0)) par[find(j)] = find(i);
+      }
+    }
+    var gr = {};
+    main.forEach(function (c, i) {
+      var r = find(i), g = gr[r];
+      if (!g) gr[r] = { x0: c.x0, y0: c.y0, x1: c.x1, y1: c.y1 };
+      else { g.x0 = Math.min(g.x0, c.x0); g.y0 = Math.min(g.y0, c.y0); g.x1 = Math.max(g.x1, c.x1); g.y1 = Math.max(g.y1, c.y1); }
+    });
+    var words = Object.keys(gr).map(function (k) { return gr[k]; });
+    // i-Punkte, Akzente usw. an das passende Wort hängen; freie Punkte/Kommas fallen weg
+    small.forEach(function (s) {
+      var cx = (s.x0 + s.x1) / 2, cy = (s.y0 + s.y1) / 2, best = null, bd = 0.4 * mh;
+      words.forEach(function (w) {
+        if (cx < w.x0 - 0.1 * mh || cx > w.x1 + 0.1 * mh) return;
+        var dv = cy < w.y0 ? w.y0 - cy : cy > w.y1 ? cy - w.y1 : 0;
+        if (dv <= bd) { bd = dv; best = w; }
+      });
+      if (best) { best.y0 = Math.min(best.y0, s.y0); best.y1 = Math.max(best.y1, s.y1); }
+    });
+    // Striche (Gedankenstrich, Unterstreichung) und Krümel ohne Wortgröße verwerfen
+    words = words.filter(function (w) { return (w.y1 - w.y0) >= 0.35 * mh; });
+    words.sort(function (a, b) { return (a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2 || a.x0 - b.x0; });
+    return words;
+  }
+
+  function processAll() {
+    if (busy) return Promise.resolve();
+    busy = true; $('empty').textContent = 'Wird ausgewertet …';
+    var chain = Promise.resolve();
+    pages.forEach(function (p) { chain = chain.then(function () { return new Promise(function (ok) { setTimeout(function () { analyse(p); ok(); }, 0); }); }); });
+    return chain.then(function () { busy = false; refresh(); });
+  }
+
+  // ---- Anzeige ----
+  function pageCount(p) { var n = 0; p.words.forEach(function (_, i) { if (!p.excl[i]) n++; }); return n + p.manual.length; }
+  function refresh() {
+    var tot = 0; pages.forEach(function (p) { tot += pageCount(p); });
+    $('stotal').textContent = tot; $('spages').textContent = pages.length;
+    $('spage').textContent = cur >= 0 ? pageCount(pages[cur]) : 0;
+    var box = $('pages'); box.textContent = '';
+    pages.forEach(function (p, i) {
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = 'Seite ' + (i + 1) + ' (' + pageCount(p) + ')';
+      if (i === cur) b.setAttribute('aria-current', 'true');
+      b.onclick = function () { cur = i; refresh(); }; box.appendChild(b);
+    });
+    draw();
+  }
+  function draw() {
+    var cv = $('cv');
+    if (cur < 0 || !pages[cur]) { cv.style.display = 'none'; $('empty').style.display = ''; $('empty').textContent = 'Noch keine Seite geladen.'; return; }
+    var p = pages[cur], W = p.canvas.width, H = p.canvas.height;
+    cv.style.display = 'block'; $('empty').style.display = 'none';
+    cv.width = W; cv.height = H;
+    var x = cv.getContext('2d'); x.drawImage(p.canvas, 0, 0);
+    if ($('showink').checked && p.overlay) x.drawImage(p.overlay, 0, 0);
+    var lw = Math.max(2, W / 500);
+    p.words.forEach(function (w, i) {
+      x.lineWidth = lw;
+      if (p.excl[i]) { x.strokeStyle = '#888'; x.setLineDash([lw * 3, lw * 3]); x.strokeRect(w.x0 - 3, w.y0 - 3, w.x1 - w.x0 + 6, w.y1 - w.y0 + 6); x.setLineDash([]);
+        x.beginPath(); x.moveTo(w.x0, w.y0); x.lineTo(w.x1, w.y1); x.moveTo(w.x1, w.y0); x.lineTo(w.x0, w.y1); x.stroke(); }
+      else { x.strokeStyle = '#e8590c'; x.strokeRect(w.x0 - 3, w.y0 - 3, w.x1 - w.x0 + 6, w.y1 - w.y0 + 6); }
+    });
+    p.manual.forEach(function (m) {
+      var r = W / 60; x.fillStyle = '#2456d6'; x.beginPath(); x.arc(m.x, m.y, r, 0, 7); x.fill();
+      x.fillStyle = '#fff'; x.font = 'bold ' + Math.round(r * 1.6) + 'px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('+', m.x, m.y + 1);
+    });
+  }
+  $('cv').addEventListener('click', function (ev) {
+    if (cur < 0) return;
+    var p = pages[cur], cv = this, rc = cv.getBoundingClientRect();
+    var x = (ev.clientX - rc.left) * cv.width / rc.width, y = (ev.clientY - rc.top) * cv.height / rc.height;
+    var r = cv.width / 60, k;
+    for (k = 0; k < p.manual.length; k++) if (Math.hypot(p.manual[k].x - x, p.manual[k].y - y) <= r) { p.manual.splice(k, 1); return refresh(); }
+    for (k = 0; k < p.words.length; k++) { var w = p.words[k];
+      if (x >= w.x0 - 3 && x <= w.x1 + 3 && y >= w.y0 - 3 && y <= w.y1 + 3) { if (p.excl[k]) delete p.excl[k]; else p.excl[k] = 1; return refresh(); } }
+    p.manual.push({ x: x, y: y }); refresh();
+  });
+
+  // ---- Einstellungen / Löschen ----
+  function later() { clearTimeout(timer); timer = setTimeout(processAll, 250); }
+  ['ink', 'sens', 'gap', 'lines'].forEach(function (id) { $(id).addEventListener('input', later); });
+  $('showink').addEventListener('input', draw);
+  $('rmpage').onclick = function () { if (cur < 0) return; pages.splice(cur, 1); cur = pages.length ? Math.min(cur, pages.length - 1) : -1; refresh(); };
+  $('clearscan').onclick = function () {
+    if ($('clearscan').dataset.sure) { pages = []; cur = -1; delete $('clearscan').dataset.sure; $('clearscan').textContent = 'Alle Seiten löschen'; refresh(); }
+    else { $('clearscan').dataset.sure = '1'; $('clearscan').textContent = 'Wirklich alle löschen?';
+      setTimeout(function () { delete $('clearscan').dataset.sure; $('clearscan').textContent = 'Alle Seiten löschen'; }, 3000); }
+  };
+  refresh();
+})();
+</script>
+<script>
+if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function () {}); }
+</script>
+</body>
+</html>

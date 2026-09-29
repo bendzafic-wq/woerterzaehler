@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4c7dff"/><stop offset="1" stop-color="#1a3fb8"/></linearGradient>
+    <linearGradient id="pen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb347"/><stop offset="1" stop-color="#f0641e"/></linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <!-- Blatt -->
+  <rect x="222" y="170" width="580" height="684" rx="56" fill="#fff"/>
+  <!-- Textzeilen -->
+  <rect x="290" y="270" width="444" height="34" rx="17" fill="#c9d5f5"/>
+  <rect x="290" y="350" width="444" height="34" rx="17" fill="#c9d5f5"/>
+  <rect x="290" y="430" width="300" height="34" rx="17" fill="#c9d5f5"/>
+  <!-- Zählmarke -->
+  <text x="452" y="690" font-family="-apple-system,Helvetica,Arial,sans-serif" font-weight="800" font-size="190" text-anchor="middle" fill="#1a3fb8">Abc</text>
+  <rect x="290" y="732" width="330" height="26" rx="13" fill="#f0641e"/>
+  <!-- Stift -->
+  <g transform="translate(700 610) rotate(38)">
+    <rect x="0" y="0" width="70" height="330" rx="18" fill="url(#pen)"/>
+    <polygon points="0,330 70,330 35,410" fill="#f7e3c4"/>
+    <polygon points="22,382 48,382 35,410" fill="#333"/>
+  </g>
+</svg>
